@@ -63,15 +63,17 @@ class ServerWorker:
 					self.state = self.READY
 				except IOError:
 					self.replyRtsp(self.FILE_NOT_FOUND_404, seq[1])
-				
+
+				total_frames_num = self.clientInfo['videoStream'].get_total_frames_num()
 				# Generate a randomized RTSP session ID
 				self.clientInfo['session'] = randint(100000, 999999)
 				
 				# Send RTSP reply
-				self.replyRtsp(self.OK_200, seq[1])
+				self.SendTotalFrame(total_frames_num, seq[1])
+				#self.replyRtsp(self.OK_200, seq[1])
 				
 				# Get the RTP/UDP port from the last line
-				self.clientInfo['rtpPort'] = request[2].split(' ')[3]
+				self.clientInfo['rtpPort'] = request[2].split(' ')[2]
 		
 		# Process PLAY request 		
 		elif requestType == self.PLAY:
@@ -162,3 +164,11 @@ class ServerWorker:
 			print("404 NOT FOUND")
 		elif code == self.CON_ERR_500:
 			print("500 CONNECTION ERROR")
+  
+	# 用于发送总的帧数
+	def SendTotalFrame(self, total_frames_num, cseq):
+		reply = 'RTSP/1.0 200 OK\nCSeq: {}\n'.format(cseq) + \
+                'Session: ' + str(self.clientInfo['session']) + '\n' + \
+                'Total: {}'.format(total_frames_num)
+		print(reply)
+		self.clientInfo['rtspSocket'][0].send(reply.encode())

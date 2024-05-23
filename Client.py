@@ -1,16 +1,18 @@
 from tkinter import *
+from tkinter import messagebox
+from tkinter.messagebox import *
 from tkinter import ttk
+import ttkbootstrap as ttkb
 import tkinter.messagebox as tkMessageBox
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
-import ttkbootstrap as ttkb
 
 from RtpPacket import RtpPacket
 
 CACHE_FILE_NAME = "cache-"
 CACHE_FILE_EXT = ".jpg"
 
-class Client:
+class Client(ttkb.Frame):
 	INIT = 0
 	READY = 1
 	PLAYING = 2
@@ -25,7 +27,8 @@ class Client:
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
 		self.master = master
 		self.master.protocol("WM_DELETE_WINDOW", self.handler)
-		self.createWidgets()
+
+		
 		self.serverAddr = serveraddr
 		self.serverPort = int(serverport)
 		self.rtpPort = int(rtpport)
@@ -38,8 +41,20 @@ class Client:
 		self.frameNbr = 0
 		self.request = True
 
+		self.total_frames = 0
+		self.total_frames_updated = False
+
+		self.frame_rate = 15
+
 		# 设置初始窗口大小
 		self.master.geometry("400x300")
+
+		self.elapsed_var = ttkb.DoubleVar(value=0)  # progress meter
+		self.remain_var = ttkb.DoubleVar(value=self.total_frames)  # progress meter
+
+		self.createWidgets()
+
+		
 		
 	def createWidgets(self):
 		self.master.grid_rowconfigure(0, weight=1)  # Allows row 0 to expand
@@ -75,10 +90,14 @@ class Client:
 		self.label = Label(self.master, height=19)
 		self.label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5) 
 
+		self.create_progress_meter()
+
        # Initialize hidden by default
 		self.table_frame = Frame(self.master)
 		self.table_label = Label(self.table_frame, text="Information Table", font=("Arial", 16))
 		self.table_label.pack()
+
+		
 	
 	def setupMovie(self):
 		"""Setup button handler."""
@@ -111,7 +130,24 @@ class Client:
 			self.playEvent = threading.Event()
 			self.playEvent.clear()
 			self.sendRtspRequest(self.PLAY)
-	
+
+	def create_progress_meter(self):
+		container = ttkb.Frame(self.master)
+		container.grid(row=2, column=0, sticky="ew", padx=10, pady=10)  # 使用 grid 管理几何布局
+
+		self.elapse = ttkb.Label(container, text='Time: {}'.format(int(self.elapsed_var.get())))
+		self.elapse.grid(row=0, column=0, padx=10, pady=10)
+
+		self.scale = ttkb.Scale(
+			master=container,
+			command=self.on_progress,
+			bootstyle='secondary'
+		)
+		self.scale.grid(row=0, column=1, sticky="ew", padx=10, pady=10, columnspan=2)  # Make sure to set columnspan if needed
+
+		self.remain = ttkb.Label(container, text='Time: {}'.format(int(self.remain_var.get())))
+		self.remain.grid(row=0, column=3, padx=10, pady=10)
+
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
 		while True:
@@ -126,6 +162,7 @@ class Client:
 										
 					if currFrameNbr > self.frameNbr: # Discard the late packet
 						self.frameNbr = currFrameNbr
+						self.scale.set(self.frameNbr / self.total_frames)  # 更新进度条
 						self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
@@ -245,6 +282,9 @@ class Client:
 				if int(lines[0].split(' ')[1]) == 200:
 					if self.requestSent == self.SETUP:
 						self.state = self.READY
+
+						self.total_frames = int(lines[3].split(' ')[1])
+
 						print("State updated to READY")
 						self.openRtpPort()
 					elif self.requestSent == self.PLAY:
@@ -318,3 +358,30 @@ class Client:
 		else:
 			self.label.grid_forget()  # Remove the label from grid
 			self.label.grid(row=0, column=0, columnspan=4, sticky="nsew")  # Restore the original grid configuration
+
+
+	def on_progress(self, val: float):	
+		if self.total_frames_updated is False and self.total_frames > 0:
+			self.remain_var.set(self.total_frames)
+			self.total_frames_updated = True
+
+		# 当前进度条位置代表的总帧数
+		current_frame = int(float(val) * self.total_frames)
+
+		# 计算时间（假设frame_rate是已知的）
+		elapsed_time = current_frame / self.frame_rate
+		total_time = self.total_frames / self.frame_rate
+
+		# 将时间转换为分钟和秒
+		elapsed_minutes = int(elapsed_time // 60)
+		elapsed_seconds = int(elapsed_time % 60)
+		total_minutes = int(total_time // 60)
+		total_seconds = int(total_time % 60)
+
+		# 设置进度条变量
+		self.elapsed_var.set(current_frame)
+		self.remain_var.set(self.total_frames - current_frame)
+
+		# 更新进度条的显示为时间格式
+		self.elapse.configure(text=f'Time: {elapsed_minutes:02d}:{elapsed_seconds:02d}')
+		self.remain.configure(text=f'Time: {total_minutes:02d}:{total_seconds:02d}')
