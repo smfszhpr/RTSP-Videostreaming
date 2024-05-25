@@ -46,6 +46,8 @@ class Client(ttkb.Frame):
 
 		self.frame_rate = 15
 
+		self.current_frame_image = None
+
 		# 设置初始窗口大小
 		self.master.geometry("400x300")
 
@@ -54,7 +56,7 @@ class Client(ttkb.Frame):
 
 		self.createWidgets()
 
-		
+		self.sendRtspRequest(self.SETUP)
 		
 	def createWidgets(self):
 		self.master.grid_rowconfigure(0, weight=1)  # Allows row 0 to expand
@@ -65,16 +67,10 @@ class Client(ttkb.Frame):
 		self.buttonFrame = ttk.Frame(self.master)
 		self.buttonFrame.grid(row=1, column=0, padx=2, pady=2, sticky="ew")
         
-        # Control buttons
-		self.setup = ttkb.Button(self.buttonFrame, text="Setup", bootstyle="primary", command=self.setupMovie)
-		self.setup.pack(side=LEFT, padx=2, pady=2, expand=True)
-        
-		self.start = ttkb.Button(self.buttonFrame, text="Play", bootstyle="success", command=self.playMovie)
-		self.start.pack(side=LEFT, padx=2, pady=2, expand=True)
-        
-		self.pause = ttkb.Button(self.buttonFrame, text="Pause", bootstyle="warning", command=self.pauseMovie)
-		self.pause.pack(side=LEFT, padx=2, pady=2, expand=True)
-        
+        # Control button
+		self.play_pause_button = ttkb.Button(self.buttonFrame, text="---Play---", bootstyle="success", command=self.toggle_play_pause)
+		self.play_pause_button.pack(side=LEFT, padx=2, pady=2, expand=True)
+		
 		self.teardown = ttkb.Button(self.buttonFrame, text="Teardown", bootstyle="danger", command=self.exitClient)
 		self.teardown.pack(side=LEFT, padx=2, pady=2, expand=True)
 
@@ -89,6 +85,12 @@ class Client(ttkb.Frame):
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
 		self.label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5) 
+		self.label.bind("<Button-1>", self.toggle_play_pause)  # 绑定鼠标左键点击事件
+
+		# 创建一个覆盖在视频上的透明图标Label
+		self.icon_label = Label(self.master, bg='black')
+		self.icon_label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+		self.icon_label.bind("<Button-1>", self.toggle_play_pause)  # 绑定鼠标左键点击事件
 
 		self.create_progress_meter()
 
@@ -101,8 +103,6 @@ class Client(ttkb.Frame):
 	
 	def setupMovie(self):
 		"""Setup button handler."""
-		if self.state == self.INIT:
-			self.sendRtspRequest(self.SETUP)
 	
 	def exitClient(self):
 		"""Teardown button handler."""
@@ -117,10 +117,15 @@ class Client(ttkb.Frame):
 		"""Pause button handler."""
 		if self.state == self.PLAYING:
 			self.sendRtspRequest(self.PAUSE)
+
+			self.show_play_icon()
 	
 	def playMovie(self):
 		"""Play button handler."""
-		print("Playing...")
+
+		if self.state == self.INIT:  # 如果当前状态是初始化，则先进行设置
+			self.setupMovie()  # 调用设置函数
+	
 		if self.state == self.READY:
 			# Create a new thread to listen for RTP packets
 			print("Starting RTP listening thread...")
@@ -130,6 +135,8 @@ class Client(ttkb.Frame):
 			self.playEvent = threading.Event()
 			self.playEvent.clear()
 			self.sendRtspRequest(self.PLAY)
+			
+			self.hide_play_icon()
 
 	def create_progress_meter(self):
 		container = ttkb.Frame(self.master)
@@ -166,7 +173,8 @@ class Client(ttkb.Frame):
 						self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
-				print("Error receiving RTP Packet")
+				if self.state == self.PLAYING:
+					print("Error receiving RTP Packet")
 				if self.playEvent.isSet(): 
 					break
 				
@@ -204,6 +212,9 @@ class Client(ttkb.Frame):
 			new_height = int(orig_height * ratio)
 			# 调整图像大小以适应label的当前尺寸，同时保持宽高比
 			img_resized = img.resize((new_width, new_height), Image.LANCZOS)
+
+			self.current_frame_image = img_resized
+
 			photo = ImageTk.PhotoImage(img_resized)
 			self.label.configure(image=photo)
 			self.label.image = photo  # 保持对photo的引用
@@ -385,3 +396,44 @@ class Client(ttkb.Frame):
 		# 更新进度条的显示为时间格式
 		self.elapse.configure(text=f'Time: {elapsed_minutes:02d}:{elapsed_seconds:02d}')
 		self.remain.configure(text=f'Time: {total_minutes:02d}:{total_seconds:02d}')
+
+	def toggle_play_pause(self,event=None):
+		if self.state == self.PLAYING:
+			self.pauseMovie()
+			self.play_pause_button.config(text="---Play---")
+			# 显示播放图标
+			self.show_play_icon()
+		else:
+			self.playMovie()
+			self.play_pause_button.config(text="--Pause--")
+			# 隐藏播放图标
+			self.hide_play_icon()
+
+	def show_play_icon(self):
+		# 加载播放图标
+		frame_image = self.current_frame_image
+		play_image = Image.open("path_to_play_icon.png").convert("RGBA")  # 确保图标文件存在
+		# 获取透明通道作为蒙版
+		mask = play_image.split()[3]
+
+		# 获取两个图像的尺寸
+		frame_width, frame_height = frame_image.size
+		icon_width, icon_height = play_image.size
+
+		# 计算图标的位置（视频帧的中心）
+		x = (frame_width - icon_width) // 2
+		y = (frame_height - icon_height) // 2
+
+		# 将图标粘贴到视频帧上，需要确保使用带透明的paste方法
+		frame_image.paste(play_image, (x, y), mask)
+
+    	# 将更新后的图像转换为Tkinter兼容的PhotoImage
+		play_photo = ImageTk.PhotoImage(frame_image)
+
+		self.icon_label.config(image=play_photo)
+		self.icon_label.image = play_photo  # 保持对PhotoImage的引用
+		self.icon_label.grid()
+
+	def hide_play_icon(self):
+		# 清除图标
+		self.icon_label.grid_remove()
