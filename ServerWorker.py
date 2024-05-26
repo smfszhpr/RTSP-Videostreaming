@@ -9,6 +9,8 @@ class ServerWorker:
 	PLAY = 'PLAY'
 	PAUSE = 'PAUSE'
 	TEARDOWN = 'TEARDOWN'
+	FAST_FORWARD = 'FAST_FORWARD'
+	REWIND = 'REWIND'
 	
 	INIT = 0
 	READY = 1
@@ -63,12 +65,14 @@ class ServerWorker:
 					self.state = self.READY
 				except IOError:
 					self.replyRtsp(self.FILE_NOT_FOUND_404, seq[1])
-				
+
+				total_frames_num = self.clientInfo['videoStream'].get_total_frames_num()
 				# Generate a randomized RTSP session ID
 				self.clientInfo['session'] = randint(100000, 999999)
 				
 				# Send RTSP reply
-				self.replyRtsp(self.OK_200, seq[1])
+				self.SendTotalFrame(total_frames_num, seq[1])
+				#self.replyRtsp(self.OK_200, seq[1])
 				
 				# Get the RTP/UDP port from the last line
 				self.clientInfo['rtpPort'] = request[2].split(' ')[3]
@@ -109,6 +113,18 @@ class ServerWorker:
 			
 			# Close the RTP socket
 			self.clientInfo['rtpSocket'].close()
+   
+		elif requestType == self.FAST_FORWARD:
+			if self.state == self.PLAYING or self.state == self.READY:
+				print("processing FAST_FORWARD\n")
+				self.clientInfo['videoStream'].fastForward()
+				self.replyRtsp(self.OK_200, seq[1])
+   
+		elif requestType == self.REWIND:
+			if self.state == self.PLAYING or self.state == self.READY:
+				print("processing REWIND\n")
+				self.clientInfo['videoStream'].rewind()
+				self.replyRtsp(self.OK_200, seq[1])
 			
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
@@ -131,6 +147,10 @@ class ServerWorker:
 					#print('-'*60)
 					#traceback.print_exc(file=sys.stdout)
 					#print('-'*60)
+			else:
+				# 如果没有更多帧，暂停发送
+				self.clientInfo['event'].set()
+				break
 
 	def makeRtp(self, payload, frameNbr):
 		"""RTP-packetize the video data."""
@@ -162,3 +182,11 @@ class ServerWorker:
 			print("404 NOT FOUND")
 		elif code == self.CON_ERR_500:
 			print("500 CONNECTION ERROR")
+  
+	# 用于发送总的帧数
+	def SendTotalFrame(self, total_frames_num, cseq):
+		reply = 'RTSP/1.0 200 OK\nCSeq: {}\n'.format(cseq) + \
+                'Session: ' + str(self.clientInfo['session']) + '\n' + \
+                'Total: {}'.format(total_frames_num)
+		print(reply)
+		self.clientInfo['rtspSocket'][0].send(reply.encode())
