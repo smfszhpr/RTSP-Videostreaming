@@ -28,6 +28,18 @@ class ServerWorker:
 		
 	def run(self):
 		threading.Thread(target=self.recvRtspRequest).start()
+	def resetState(self):
+		"""Reset the server state。"""
+		self.state = self.INIT
+		if 'videoStream' in self.clientInfo:
+			del self.clientInfo['videoStream']
+		if 'rtpSocket' in self.clientInfo:
+			self.clientInfo['rtpSocket'].close()
+		if 'event' in self.clientInfo:
+			self.clientInfo['event'].set()
+		if 'worker' in self.clientInfo:	
+			self.clientInfo['worker'].join()
+		self.stop_request.set()  # 确保停止接收请求的线程
 	
 	def recvRtspRequest(self):
 		"""Receive RTSP request from the client."""
@@ -45,80 +57,77 @@ class ServerWorker:
 		request = data.split('\n')
 		line1 = request[0].split(' ')
 		requestType = line1[0]
-		
-		# Get the media file name
+	
+	# Get the media file name
 		filename = line1[1]
-		
-		# Get the RTSP sequence number 
+	
+	# Get the RTSP sequence number 
 		seq = request[1].split(' ')
-		
-		# Process SETUP request
+	
+	# Process SETUP request
 		if requestType == self.SETUP:
-			if self.state == self.INIT:
-				# Update state
-				print("processing SETUP\n")
-				
-				try:
-					self.clientInfo['videoStream'] = VideoStream(filename)
-					self.state = self.READY
-				except IOError:
-					self.replyRtsp(self.FILE_NOT_FOUND_404, seq[1])
-				
-				# Generate a randomized RTSP session ID
-				self.clientInfo['session'] = randint(100000, 999999)
-				
-				# Send RTSP reply
-				self.replyRtsp(self.OK_200, seq[1])
-				
-				# Get the RTP/UDP port from the last line
-				self.clientInfo['rtpPort'] = request[2].split(' ')[3]
+			print("processing SETUP\n")
 		
-		# Process PLAY request 		
+			try:
+				self.clientInfo['videoStream'] = VideoStream(filename)
+				self.state = self.READY
+			except IOError:
+				self.replyRtsp(self.FILE_NOT_FOUND_404, seq[1])
+
+			total_frames_num = self.clientInfo['videoStream'].get_total_frames_num()
+		# Generate a randomized RTSP session ID
+			self.clientInfo['session'] = randint(100000, 999999)
+		
+		# Send RTSP reply
+			self.SendTotalFrame(total_frames_num, seq[1])
+		#self.replyRtsp(self.OK_200, seq[1])
+		
+		# Get the RTP/UDP port from the last line
+			self.clientInfo['rtpPort'] = request[2].split(' ')[3]
+	
+	# Process PLAY request 		
 		elif requestType == self.PLAY:
 			if self.state == self.READY:
 				print("processing PLAY\n")
 				self.state = self.PLAYING
-				
-				# Create a new socket for RTP/UDP
+			
+			# Create a new socket for RTP/UDP
 				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-				
+			
 				self.replyRtsp(self.OK_200, seq[1])
-				
-				# Create a new thread and start sending RTP packets
+			
+			# Create a new thread and start sending RTP packets
 				self.clientInfo['event'] = threading.Event()
-				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp) 
 				self.clientInfo['worker'].start()
-		
-		# Process PAUSE request
+	
+	# Process PAUSE request
 		elif requestType == self.PAUSE:
 			if self.state == self.PLAYING:
 				print("processing PAUSE\n")
 				self.state = self.READY
-				
-				self.clientInfo['event'].set()
 			
-				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['event'].set()
 		
-		# Process TEARDOWN request
+				self.replyRtsp(self.OK_200, seq[1])
+	
+	# Process TEARDOWN request
 		elif requestType == self.TEARDOWN:
 			print("processing TEARDOWN\n")
 
 			self.clientInfo['event'].set()
-			
 			self.replyRtsp(self.OK_200, seq[1])
-			
-			# Close the RTP socket
-			self.clientInfo['rtpSocket'].close()
+			self.resetState()  # Reset the server state
 			
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
 		while True:
 			self.clientInfo['event'].wait(0.05) 
-			
-			# Stop sending if request is PAUSE or TEARDOWN
+		
+		# Stop sending if request is PAUSE or TEARDOWN
 			if self.clientInfo['event'].isSet(): 
 				break 
-				
+			
 			data = self.clientInfo['videoStream'].nextFrame()
 			if data: 
 				frameNumber = self.clientInfo['videoStream'].frameNbr()
@@ -128,10 +137,6 @@ class ServerWorker:
 					self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber),(address,port))
 				except:
 					print("Connection Error")
-					#print('-'*60)
-					#traceback.print_exc(file=sys.stdout)
-					#print('-'*60)
-
 	def makeRtp(self, payload, frameNbr):
 		"""RTP-packetize the video data."""
 		version = 2
@@ -162,3 +167,11 @@ class ServerWorker:
 			print("404 NOT FOUND")
 		elif code == self.CON_ERR_500:
 			print("500 CONNECTION ERROR")
+  
+	# 用于发送总的帧数
+	def SendTotalFrame(self, total_frames_num, cseq):
+		reply = 'RTSP/1.0 200 OK\nCSeq: {}\n'.format(cseq) + \
+                'Session: ' + str(self.clientInfo['session']) + '\n' + \
+                'Total: {}'.format(total_frames_num)
+		print(reply)
+		self.clientInfo['rtspSocket'][0].send(reply.encode())
