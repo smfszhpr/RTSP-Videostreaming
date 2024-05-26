@@ -22,7 +22,7 @@ class Client(ttkb.Frame):
 	PLAY = 1
 	PAUSE = 2
 	TEARDOWN = 3
-
+	FAST_FORWARD = 4
 	# Initiation..
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
 		self.master = master
@@ -80,7 +80,11 @@ class Client(ttkb.Frame):
         
 		self.fullscreen = ttkb.Button(self.buttonFrame, text="Fullscreen", bootstyle="secondary", command=self.toggleFullscreen)
 		self.fullscreen.pack(side=LEFT, padx=2, pady=2, expand=True)
-		
+
+		# 添加快进按钮
+		self.fast_forward = ttkb.Button(self.buttonFrame, text="快进", bootstyle="info", command=self.fastForwardMovie)
+		self.fast_forward.pack(side=LEFT, padx=2, pady=2, expand=True)
+
         # Label for displaying video
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
@@ -255,8 +259,12 @@ class Client(ttkb.Frame):
 			request = "TEARDOWN " + self.fileName + " RTSP/1.0\nCSeq: " + str(self.rtspSeq) + "\nSession: " + str(self.sessionId)
 			self.requestSent = self.TEARDOWN
 
+		elif requestCode == self.FAST_FORWARD:
+			request = f"FAST_FORWARD {self.fileName} RTSP/1.0\nCSeq: {self.rtspSeq}\nSession: {self.sessionId}\nFrames: 50"
+			self.requestSent = self.FAST_FORWARD
+		
 		# Send the RTSP request using rtspSocket
-		if requestCode in [self.SETUP, self.PLAY, self.PAUSE, self.TEARDOWN]:
+		if requestCode in [self.SETUP, self.PLAY, self.PAUSE, self.TEARDOWN, self.FAST_FORWARD]:
 			self.rtspSocket.send(request.encode())
 			print('\nData sent:\n' + request)
 
@@ -437,3 +445,8 @@ class Client(ttkb.Frame):
 	def hide_play_icon(self):
 		# 清除图标
 		self.icon_label.grid_remove()
+
+	def fastForwardMovie(self):
+		"""处理快进动作。"""
+		if self.state == self.PLAYING:
+			self.sendRtspRequest(4)

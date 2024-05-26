@@ -1,6 +1,8 @@
+from collections import deque
 class VideoStream:
 	def __init__(self, filename):
 		self.filename = filename
+		self.data_length_stack = deque()
 		try:
 			self.file = open(filename, 'rb')
 		except:
@@ -25,7 +27,7 @@ class VideoStream:
 		data = self.file.read(5) # Get the framelength from the first 5 bits
 		if data: 
 			framelength = int(data)
-							
+			self.data_length_stack.append(framelength)
 			# Read the current frame
 			data = self.file.read(framelength)
 			self.frameNum += 1
@@ -37,3 +39,24 @@ class VideoStream:
 	
 	def get_total_frames_num(self):
 		return self.total_frameNum
+	
+	def movepoint(self, n):
+		if n > 0:
+			for i in range(n):
+				data = self.file.read(5)
+				if data:
+					framelength = int(data)
+					self.data_length_stack.append(framelength)
+					data = self.file.seek(framelength, 1)
+					self.frameNum += 1
+		else:
+			n = -n
+			framelengths = 0
+			for i in range(n):
+				if self.frameNum == 3:
+					break
+				framelength = self.data_length_stack.pop()
+				framelengths += (framelength + 5)
+				self.frameNum -= 1
+
+			self.file.seek(-framelengths, 1)

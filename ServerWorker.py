@@ -96,7 +96,6 @@ class ServerWorker:
 			if self.state == self.PLAYING:
 				print("processing PAUSE\n")
 				self.state = self.READY
-				
 				self.clientInfo['event'].set()
 			
 				self.replyRtsp(self.OK_200, seq[1])
@@ -104,7 +103,6 @@ class ServerWorker:
 		# Process TEARDOWN request
 		elif requestType == self.TEARDOWN:
 			print("processing TEARDOWN\n")
-
 			self.clientInfo['event'].set()
 			
 			self.replyRtsp(self.OK_200, seq[1])
@@ -112,6 +110,20 @@ class ServerWorker:
 			# Close the RTP socket
 			self.clientInfo['rtpSocket'].close()
 			
+		# Handle new command
+		if requestType == "FAST_FORWARD":
+			frames_to_skip = int(request[3].split(' ')[1])  # Assuming frame count is sent like this
+			if self.state == self.PLAYING:
+				self.clientInfo['videoStream'].movepoint(100)
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+				# Create a new thread and start sending RTP packets
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'].start()
+
+
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
 		while True:
