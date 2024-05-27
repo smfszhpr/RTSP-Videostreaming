@@ -96,6 +96,7 @@ class ServerWorker:
 			if self.state == self.PLAYING:
 				print("processing PAUSE\n")
 				self.state = self.READY
+				#self.clientInfo['videoStream'].movepoint(-100)
 				self.clientInfo['event'].set()
 			
 				self.replyRtsp(self.OK_200, seq[1])
@@ -111,18 +112,31 @@ class ServerWorker:
 			self.clientInfo['rtpSocket'].close()
 			
 		# Handle new command
-		if requestType == "FAST_FORWARD":
+		elif requestType == "FAST_FORWARD":
 			frames_to_skip = int(request[3].split(' ')[1])  # Assuming frame count is sent like this
 			if self.state == self.PLAYING:
 				self.clientInfo['videoStream'].movepoint(100)
 				self.clientInfo['event'].set()
 				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 				self.replyRtsp(self.OK_200, seq[1])
+    
 				# Create a new thread and start sending RTP packets
+				
 				self.clientInfo['event'] = threading.Event()
 				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
 				self.clientInfo['worker'].start()
-
+    
+    	# 处理回退请求
+		elif requestType == "REWIND":
+			frames_to_rewind = int(request[3].split(' ')[1])  # 假设回退的帧数以这种方式发送
+			if self.state == self.PLAYING:
+				self.clientInfo['videoStream'].backpoint(100)
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'].start()
 
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
