@@ -60,3 +60,18 @@ class VideoStream:
 				self.frameNum -= 1
 
 			self.file.seek(-framelengths, 1)
+   
+	def backpoint(self, n):
+		"""回退n帧。"""
+		if n <= 0 or self.frameNum <= 0:
+			return
+        
+		framelengths = 0
+		for _ in range(n):
+			if self.frameNum == 0:
+				break
+			framelength = self.data_length_stack.pop()
+			framelengths += (framelength + 5)
+			self.frameNum -= 1
+
+		self.file.seek(-framelengths, 1)
