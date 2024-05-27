@@ -9,7 +9,8 @@ class ServerWorker:
 	PLAY = 'PLAY'
 	PAUSE = 'PAUSE'
 	TEARDOWN = 'TEARDOWN'
-	
+	REPLAY = 'REPLAY'  # 添加重播请求类型
+
 	INIT = 0
 	READY = 1
 	PLAYING = 2
@@ -136,6 +137,17 @@ class ServerWorker:
 				self.replyRtsp(self.OK_200, seq[1])
 				self.clientInfo['event'] = threading.Event()
 				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'].start()
+		elif requestType == self.REPLAY:
+			if self.state in [self.PLAYING, self.READY]:
+				print("processing REPLAY\n")
+				self.state = self.READY
+				self.clientInfo['videoStream'].reset()  # 重置视频流到开头
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp) 
 				self.clientInfo['worker'].start()
 
 	def sendRtp(self):
