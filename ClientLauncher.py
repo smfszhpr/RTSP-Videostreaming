@@ -1,7 +1,6 @@
 import sys
 from tkinter import Tk
 from Client import Client
-import ttkbootstrap as ttkb
 if __name__ == "__main__":
 	try:
 		serverAddr = sys.argv[1]
@@ -11,8 +10,8 @@ if __name__ == "__main__":
 	except:
 		print("[Usage: ClientLauncher.py Server_name Server_port RTP_port Video_file]\n")	
 	
-	#root = Tk()
-	root = ttkb.Window(themename="cyborg")
+	root = Tk()
+	#root = ttkb.Window(themename="cyborg")
 	# Create a new client
 	app = Client(root, serverAddr, serverPort, rtpPort, fileName)
 	app.master.title("RTPClient")	
