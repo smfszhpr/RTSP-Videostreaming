@@ -25,15 +25,18 @@ class VideoStream:
 	
 	def nextFrame(self):
 		"""Get next frame."""
-		data = self.file.read(5) # Get the framelength from the first 5 bits
-		if data: 
-			framelength = int(data)
-			self.data_length_stack.append(framelength)
+		try:
+			data = self.file.read(5) # Get the framelength from the first 5 bits
+			if data: 
+				framelength = int(data)
+				self.data_length_stack.append(framelength)
 			# Read the current frame
-			data = self.file.read(framelength)
-			self.frameNum += 1
-		return data
-		
+				data = self.file.read(framelength)
+				self.frameNum += 1
+			return data
+		except Exception as e:
+			print(f"Error reading frame: {e}")
+			return None
 	def frameNbr(self):
 		"""Get frame number."""
 		return self.frameNum

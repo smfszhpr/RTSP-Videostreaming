@@ -4,17 +4,14 @@ from tkinter import *
 from tkinter import messagebox as tkMessageBox
 from tkinter import ttk
 import ttkbootstrap as ttkb
-from ttkbootstrap import Style
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
 from RtpPacket import RtpPacket
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
 CACHE_FILE_NAME = "cache-"
 CACHE_FILE_EXT = ".jpg"
-BACKGROUND_IMAGE_PATH = "D:\桌面\study\计算机网络\RTSP-Videostreaming-1.6\RTSP-Videostreaming-1.6\R.jpg"  # 替换为背景图片的路径
 
 class Client(ttkb.Frame):
     INIT = 0
@@ -32,7 +29,6 @@ class Client(ttkb.Frame):
 
     # Initiation..
     def __init__(self, master, serveraddr, serverport, rtpport, filename):
-        super().__init__(master)
         self.master = master
         self.master.protocol("WM_DELETE_WINDOW", self.handler)
 
@@ -73,8 +69,7 @@ class Client(ttkb.Frame):
         self.packet_loss_window = None
 
         # 设置初始窗口大小
-        self.master.geometry("800x600")
-        self.master.configure(bg='#2E2E2E')  # 设置背景颜色
+        self.master.geometry("400x300")
 
         self.elapsed_var = ttkb.DoubleVar(value=0)  # progress meter
         self.remain_var = ttkb.DoubleVar(value=self.total_frames)  # progress meter
@@ -82,65 +77,58 @@ class Client(ttkb.Frame):
         self.createWidgets()
 
         self.sendRtspRequest(self.SETUP)
+        self.master.bind("<space>", self.toggle_play_pause_key)
+        self.master.bind("<Right>", self.fast_forward_key)
+        self.master.bind("<Left>", self.rewind_key)
+        self.master.bind("<Return>", self.replay_key)
 
     def createWidgets(self):
         self.master.grid_rowconfigure(0, weight=1)  # Allows row 0 to expand
         self.master.grid_columnconfigure(0, weight=1)  # Allows column 0 to expand
 
-        # Set background image
-        self.background_image = Image.open(BACKGROUND_IMAGE_PATH)
-        self.background_photo = ImageTk.PhotoImage(self.background_image)
-        self.background_label = Label(self.master, image=self.background_photo)
-        self.background_label.place(relwidth=1, relheight=1)
-
-        # Custom style
-        style = Style(theme='cyborg')  # You can choose other themes from ttkbootstrap
-        style.configure("TFrame", background="#2E2E2E")
-        style.configure("TButton", font=("Helvetica", 12, "bold"))
-
         # Button Frame
-        self.buttonFrame = ttkb.Frame(self.master, style="TFrame")
-        self.buttonFrame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        self.buttonFrame = ttk.Frame(self.master)
+        self.buttonFrame.grid(row=1, column=0, padx=2, pady=2, sticky="ew")
 
         # Control button
-        self.play_pause_button = ttkb.Button(self.buttonFrame, text="---Play---", bootstyle="success-outline", style="TButton", command=self.toggle_play_pause)
-        self.play_pause_button.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.play_pause_button = ttkb.Button(self.buttonFrame, text="---Play---", bootstyle="success", command=self.toggle_play_pause)
+        self.play_pause_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
-        self.teardown = ttkb.Button(self.buttonFrame, text="Teardown", bootstyle="danger-outline", style="TButton", command=self.exitClient)
-        self.teardown.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.teardown = ttkb.Button(self.buttonFrame, text="Teardown", bootstyle="danger", command=self.exitClient)
+        self.teardown.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # 快进按钮
-        self.fast_forward_button = ttkb.Button(self.buttonFrame, text=">>", bootstyle="info-outline", style="TButton", command=self.fastForwardMovie)
-        self.fast_forward_button.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.fast_forward_button = ttkb.Button(self.buttonFrame, text=">>", bootstyle="info", command=self.fastForwardMovie)
+        self.fast_forward_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # 回退按钮
-        self.rewind_button = ttkb.Button(self.buttonFrame, text="<<", bootstyle="info-outline", style="TButton", command=self.rewindMovie)
-        self.rewind_button.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.rewind_button = ttkb.Button(self.buttonFrame, text="<<", bootstyle="info", command=self.rewindMovie)
+        self.rewind_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # 重播按钮
-        self.replay_button = ttkb.Button(self.buttonFrame, text="Replay", bootstyle="info-outline", style="TButton", command=self.replayMovie)
-        self.replay_button.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.replay_button = ttkb.Button(self.buttonFrame, text="Replay", bootstyle="info", command=self.replayMovie)
+        self.replay_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # Create Subscribe button
-        self.subscribe = ttkb.Button(self.buttonFrame, text="Subscribe", bootstyle="info-outline", style="TButton", command=self.toggleInfoWindow)
-        self.subscribe.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.subscribe = ttkb.Button(self.buttonFrame, text="Subscribe", bootstyle="info", command=self.toggleInfoWindow)
+        self.subscribe.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # Create Graph button
-        self.graph_button = ttkb.Button(self.buttonFrame, text="Graph", bootstyle="info-outline", style="TButton", command=self.toggleGraphWindows)
-        self.graph_button.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.graph_button = ttkb.Button(self.buttonFrame, text="Graph", bootstyle="info", command=self.toggleGraphWindows)
+        self.graph_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
-        self.fullscreen = ttkb.Button(self.buttonFrame, text="Fullscreen", bootstyle="secondary-outline", style="TButton", command=self.toggleFullscreen)
-        self.fullscreen.pack(side=LEFT, padx=5, pady=5, expand=True)
+        self.fullscreen = ttkb.Button(self.buttonFrame, text="Fullscreen", bootstyle="secondary", command=self.toggleFullscreen)
+        self.fullscreen.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # Label for displaying video
         # Create a label to display the movie
-        self.label = Label(self.master, bg="black", height=19)
-        self.label.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.label = Label(self.master, height=19)
+        self.label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.label.bind("<Button-1>", self.toggle_play_pause)  # 绑定鼠标左键点击事件
 
         # 创建一个覆盖在视频上的透明图标Label
         self.icon_label = Label(self.master, bg='black')
-        self.icon_label.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.icon_label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.icon_label.bind("<Button-1>", self.toggle_play_pause)  # 绑定鼠标左键点击事件
 
         self.create_progress_meter()
@@ -181,21 +169,20 @@ class Client(ttkb.Frame):
             self.hide_play_icon()
 
     def create_progress_meter(self):
-        container = ttkb.Frame(self.master, style="TFrame")
+        container = ttkb.Frame(self.master)
         container.grid(row=2, column=0, sticky="ew", padx=10, pady=10)  # 使用 grid 管理几何布局
 
-        self.elapse = ttkb.Label(container, text='Time: {}'.format(int(self.elapsed_var.get())), style="TLabel")
+        self.elapse = ttkb.Label(container, text='Time: {}'.format(int(self.elapsed_var.get())))
         self.elapse.grid(row=0, column=0, padx=10, pady=10)
 
         self.scale = ttkb.Scale(
             master=container,
             command=self.on_progress,
-            bootstyle='secondary',
-            style="TScale"
+            bootstyle='secondary'
         )
         self.scale.grid(row=0, column=1, sticky="ew", padx=10, pady=10, columnspan=2)  # Make sure to set columnspan if needed
 
-        self.remain = ttkb.Label(container, text='Time: {}'.format(int(self.remain_var.get())), style="TLabel")
+        self.remain = ttkb.Label(container, text='Time: {}'.format(int(self.remain_var.get())))
         self.remain.grid(row=0, column=3, padx=10, pady=10)
 
     def listenRtp(self):
@@ -420,11 +407,7 @@ class Client(ttkb.Frame):
         else:
             self.info_window = Toplevel(self.master)
             self.info_window.title("Information Table")
-            self.info_window.configure(bg='#2E2E2E')
-            self.info_window.geometry("300x200")  # Set the size of the info window
-            self.info_window.resizable(False, False)  # Prevent resizing of the info window
-            self.info_window.attributes('-topmost', 'true')  # Keep the info window on top
-            self.info_table = Frame(self.info_window, bg='#2E2E2E')
+            self.info_table = Frame(self.info_window)
             self.info_table.pack(fill="both", expand=True)
             self.updateInfoTable()  # Call this to update table contents dynamically
 
@@ -459,8 +442,8 @@ class Client(ttkb.Frame):
                 widget.destroy()  # 清除现有的控件，避免重复添加
 
             for i, (name, value) in enumerate(data):
-                Label(self.info_table, text=name, bg='#2E2E2E', fg='white', font=("Helvetica", 10, "bold")).grid(row=i, column=0, sticky='w', padx=10, pady=5)
-                Label(self.info_table, text=value, bg='#2E2E2E', fg='white', font=("Helvetica", 10)).grid(row=i, column=1, sticky='w', padx=10, pady=5)
+                Label(self.info_table, text=name).grid(row=i, column=0, sticky='w')
+                Label(self.info_table, text=value).grid(row=i, column=1, sticky='w')
 
     def startInfoUpdateTimer(self):
         """Start a timer to update the info table periodically."""
@@ -516,7 +499,14 @@ class Client(ttkb.Frame):
             self.play_pause_button.config(text="--Pause--")
             # 隐藏播放图标
             self.hide_play_icon()
-
+    def toggle_play_pause_key(self, event=None):
+        self.toggle_play_pause()
+    def fast_forward_key(self, event=None):
+        self.fastForwardMovie()
+    def rewind_key(self, event=None):
+        self.rewindMovie()
+    def replay_key(self, event=None):
+        self.replayMovie()
     def show_play_icon(self):
         # 加载播放图标
         frame_image = self.current_frame_image
@@ -628,4 +618,3 @@ class Client(ttkb.Frame):
         canvas_packet_loss = FigureCanvasTkAgg(fig_packet_loss, master=self.packet_loss_window)
         canvas_packet_loss.get_tk_widget().pack(fill=BOTH, expand=True)
         canvas_packet_loss.draw()
-
