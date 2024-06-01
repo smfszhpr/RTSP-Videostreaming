@@ -22,3 +22,5 @@ python ClientLauncher.py localhost 8554 5114 video.mjpeg
 
 
 2.1  添加了2倍速功能
+
+Final:最终版本
