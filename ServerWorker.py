@@ -10,6 +10,7 @@ class ServerWorker:
 	PAUSE = 'PAUSE'
 	TEARDOWN = 'TEARDOWN'
 	REPLAY = 'REPLAY'  # 添加重播请求类型
+	DOUBLE_SPEED = 'DOUBLE_SPEED'  # 添加2倍速请求类型
 
 	INIT = 0
 	READY = 1
@@ -26,7 +27,8 @@ class ServerWorker:
 	
 	def __init__(self, clientInfo):
 		self.clientInfo = clientInfo
-		
+		self.playback_speed = 1  # 初始播放速度为1x
+	
 	def run(self):
 		threading.Thread(target=self.recvRtspRequest).start()
 	
@@ -97,7 +99,6 @@ class ServerWorker:
 			if self.state == self.PLAYING:
 				print("processing PAUSE\n")
 				self.state = self.READY
-				#self.clientInfo['videoStream'].movepoint(-100)
 				self.clientInfo['event'].set()
 			
 				self.replyRtsp(self.OK_200, seq[1])
@@ -138,22 +139,37 @@ class ServerWorker:
 				self.clientInfo['event'] = threading.Event()
 				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
 				self.clientInfo['worker'].start()
+		
+		# Process REPLAY request
 		elif requestType == self.REPLAY:
 			if self.state in [self.PLAYING, self.READY]:
 				print("processing REPLAY\n")
 				self.state = self.READY
 				self.clientInfo['videoStream'].reset()  # 重置视频流到开头
-				self.clientInfo['event'].set()
+				self.clientInfo['event'].clear()
 				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 				self.replyRtsp(self.OK_200, seq[1])
 				self.clientInfo['event'] = threading.Event()
 				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp) 
 				self.clientInfo['worker'].start()
+				
+		# Process DOUBLE_SPEED request
+		elif requestType == self.DOUBLE_SPEED:
+			speed = int(request[3].split(' ')[1])  # Assuming speed is sent like this
+			if self.state == self.PLAYING:
+				print(f"processing DOUBLE_SPEED to {speed}x\n")
+				self.playback_speed = speed
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp)
+				self.clientInfo['worker'].start()
 
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
 		while True:
-			self.clientInfo['event'].wait(0.05) 
+			self.clientInfo['event'].wait(0.05 / self.playback_speed)  # Adjust sending interval based on playback speed
 			
 			# Stop sending if request is PAUSE or TEARDOWN
 			if self.clientInfo['event'].isSet(): 

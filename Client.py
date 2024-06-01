@@ -26,12 +26,12 @@ class Client(ttkb.Frame):
     FAST_FORWARD = 4
     REWIND = 5
     REPLAY = 6  # New request code for replay
-
+    DOUBLE_SPEED = 7
     # Initiation..
     def __init__(self, master, serveraddr, serverport, rtpport, filename):
         self.master = master
         self.master.protocol("WM_DELETE_WINDOW", self.handler)
-
+        self.speed = 1
         self.serverAddr = serveraddr
         self.serverPort = int(serverport)
         self.rtpPort = int(rtpport)
@@ -108,6 +108,9 @@ class Client(ttkb.Frame):
         # 重播按钮
         self.replay_button = ttkb.Button(self.buttonFrame, text="Replay", bootstyle="info", command=self.replayMovie)
         self.replay_button.pack(side=LEFT, padx=2, pady=2, expand=True)
+
+        self.double_speed_button = ttkb.Button(self.buttonFrame, text="2× Speed", bootstyle="info", command=self.toggle_speed)
+        self.double_speed_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # Create Subscribe button
         self.subscribe = ttkb.Button(self.buttonFrame, text="Subscribe", bootstyle="info", command=self.toggleInfoWindow)
@@ -315,7 +318,13 @@ class Client(ttkb.Frame):
             self.requestSent = self.REPLAY
 
         # Send the RTSP request using rtspSocket
-        if requestCode in [self.SETUP, self.PLAY, self.PAUSE, self.TEARDOWN, self.FAST_FORWARD, self.REWIND, self.REPLAY]:
+        elif requestCode == self.DOUBLE_SPEED:
+            speed = 2 if self.speed == 1 else 1  # Toggle speed between 1 and 2
+            request = f"DOUBLE_SPEED {self.fileName} RTSP/1.0\nCSeq: {self.rtspSeq}\nSession: {self.sessionId}\nSpeed: {speed}"
+            self.requestSent = self.DOUBLE_SPEED
+
+        # Send the RTSP request using rtspSocket
+        if requestCode in [self.SETUP, self.PLAY, self.PAUSE, self.TEARDOWN, self.FAST_FORWARD, self.REWIND, self.REPLAY, self.DOUBLE_SPEED]:
             self.rtspSocket.send(request.encode())
             print('\nData sent:\n' + request)
 
@@ -376,6 +385,7 @@ class Client(ttkb.Frame):
                         self.state = self.READY  # Set state to READY after receiving replay ACK
                         print("State updated to READY for REPLAY")
                         self.frameNbr = 0  # Reset the frame number to 0
+                        self.show_play_icon()
                         self.playMovie()  # Start playing the movie from the beginning
 
     def openRtpPort(self):
@@ -396,7 +406,11 @@ class Client(ttkb.Frame):
             self.exitClient()
         else:  # When the user presses cancel, resume playing.
             self.playMovie()
-
+    def toggle_speed(self):
+        """Toggle between 1x and 2x speed."""
+        self.sendRtspRequest(self.DOUBLE_SPEED)
+        self.speed = 2 if self.speed == 1 else 1
+        self.double_speed_button.config(text="1× Speed" if self.speed == 2 else "2× Speed")
     def toggleInfoWindow(self):
         """Toggle the display of the information window."""
         if self.info_window and self.info_window.winfo_exists():
@@ -547,8 +561,15 @@ class Client(ttkb.Frame):
 
     def replayMovie(self):
         """处理重播动作。"""
+        if self.state != self.PLAYING:
+            self.playMovie()
+            self.play_pause_button.config(text="--Pause--")
+            # 隐藏播放图标
+            self.hide_play_icon()
         if self.state == self.PLAYING or self.state == self.READY:
             self.sendRtspRequest(self.REPLAY)
+            self.speed = 1  # Reset speed to 1x
+            self.double_speed_button.config(text="2× Speed")
 
     def updateGraphData(self):
         """Update graph data for plotting."""

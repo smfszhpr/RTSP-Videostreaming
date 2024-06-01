@@ -1,5 +1,4 @@
 from collections import deque
-
 class VideoStream:
 	def __init__(self, filename):
 		self.filename = filename
@@ -86,6 +85,11 @@ class VideoStream:
 	
 	def reset(self):
 		"""Reset the video stream to the beginning."""
-		self.file.seek(0)
+		self.file.seek(0, 0)
 		self.frameNum = 0
 		self.data_length_stack.clear()
+		try:
+			self.file = open(self.filename, 'rb')
+		except IOError:
+			raise IOError
+		print("Video stream reset to the beginning.")
