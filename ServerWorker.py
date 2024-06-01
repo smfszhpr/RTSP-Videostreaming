@@ -28,7 +28,7 @@ class ServerWorker:
 	def __init__(self, clientInfo):
 		self.clientInfo = clientInfo
 		self.playback_speed = 1  # 初始播放速度为1x
-	
+
 	def run(self):
 		threading.Thread(target=self.recvRtspRequest).start()
 	
@@ -115,44 +115,23 @@ class ServerWorker:
 			
 		# Handle new command
 		elif requestType == "FAST_FORWARD":
-			frames_to_skip = int(request[3].split(' ')[1])  # Assuming frame count is sent like this
 			if self.state == self.PLAYING:
-				self.clientInfo['videoStream'].movepoint(100)
-				self.clientInfo['event'].set()
-				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['videoStream'].movepoint(60)
     
-				# Create a new thread and start sending RTP packets
-				
-				self.clientInfo['event'] = threading.Event()
-				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
-				self.clientInfo['worker'].start()
+
     
     	# 处理回退请求
 		elif requestType == "REWIND":
-			frames_to_rewind = int(request[3].split(' ')[1])  # 假设回退的帧数以这种方式发送
 			if self.state == self.PLAYING:
-				self.clientInfo['videoStream'].backpoint(100)
-				self.clientInfo['event'].set()
-				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-				self.replyRtsp(self.OK_200, seq[1])
-				self.clientInfo['event'] = threading.Event()
-				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
-				self.clientInfo['worker'].start()
+				self.clientInfo['videoStream'].backpoint(60)
 		
-		# Process REPLAY request
 		elif requestType == self.REPLAY:
 			if self.state in [self.PLAYING, self.READY]:
 				print("processing REPLAY\n")
-				self.state = self.READY
+				self.state = self.PLAYING
 				self.clientInfo['videoStream'].reset()  # 重置视频流到开头
-				self.clientInfo['event'].clear()
-				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-				self.replyRtsp(self.OK_200, seq[1])
-				self.clientInfo['event'] = threading.Event()
-				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp) 
-				self.clientInfo['worker'].start()
-				
+
+		
 		# Process DOUBLE_SPEED request
 		elif requestType == self.DOUBLE_SPEED:
 			speed = int(request[3].split(' ')[1])  # Assuming speed is sent like this
@@ -165,6 +144,16 @@ class ServerWorker:
 				self.clientInfo['event'] = threading.Event()
 				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp)
 				self.clientInfo['worker'].start()
+
+		elif requestType == "SEEK":
+			try:
+				frames_to_skip = int(request[3].split(' ')[1])
+				if self.state in [self.PLAYING, self.READY]:
+					print("processing SEEK\n")
+					print(frames_to_skip)
+					self.clientInfo['videoStream'].movepoint(frames_to_skip)
+			except:
+				pass
 
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""

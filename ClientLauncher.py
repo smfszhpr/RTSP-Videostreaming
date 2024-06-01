@@ -1,7 +1,6 @@
 import sys
 from tkinter import Tk
 from Client import Client
-import ttkbootstrap as ttkb
 if __name__ == "__main__":
 	try:
 		serverAddr = sys.argv[1]
@@ -17,4 +16,6 @@ if __name__ == "__main__":
 	app = Client(root, serverAddr, serverPort, rtpPort, fileName)
 	app.master.title("RTPClient")	
 	root.mainloop()
+
+#"bootstyle="success""
 	

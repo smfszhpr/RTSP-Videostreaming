@@ -2,8 +2,10 @@ import time
 from threading import Timer
 from tkinter import *
 from tkinter import messagebox as tkMessageBox
+import tkinter as tk
 from tkinter import ttk
 import ttkbootstrap as ttkb
+import tkinter.font as font
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
 from RtpPacket import RtpPacket
@@ -27,11 +29,14 @@ class Client(ttkb.Frame):
     REWIND = 5
     REPLAY = 6  # New request code for replay
     DOUBLE_SPEED = 7
+    SEEK = 8
     # Initiation..
     def __init__(self, master, serveraddr, serverport, rtpport, filename):
         self.master = master
         self.master.protocol("WM_DELETE_WINDOW", self.handler)
         self.speed = 1
+        self.master.bind("<Configure>", self.resize_image)
+
         self.serverAddr = serveraddr
         self.serverPort = int(serverport)
         self.rtpPort = int(rtpport)
@@ -74,6 +79,16 @@ class Client(ttkb.Frame):
         self.elapsed_var = ttkb.DoubleVar(value=0)  # progress meter
         self.remain_var = ttkb.DoubleVar(value=self.total_frames)  # progress meter
 
+        # 设置菜单栏
+        self.menu_bar = Menu(self.master)
+        self.master.config(menu=self.menu_bar)
+
+        # 直接在菜单栏添加按钮
+        self.menu_bar.add_command(label="Subscribe", command=self.toggleInfoWindow)
+        self.menu_bar.add_command(label="Graph", command=self.toggleGraphWindows)
+        self.menu_bar.add_command(label="Exit", command=self.exitClient)
+
+
         self.createWidgets()
 
         self.sendRtspRequest(self.SETUP)
@@ -82,47 +97,52 @@ class Client(ttkb.Frame):
         self.master.bind("<Left>", self.rewind_key)
         self.master.bind("<Return>", self.replay_key)
 
+        self.seekstate = 0
+        self.seekframe = 1
+
     def createWidgets(self):
         self.master.grid_rowconfigure(0, weight=1)  # Allows row 0 to expand
         self.master.grid_columnconfigure(0, weight=1)  # Allows column 0 to expand
 
+        # Create a container for the progress meter
+        progress_container = ttkb.Frame(self.master)
+        progress_container.grid(row=1, column=0, padx=2, pady=2, sticky="ew")
+    
+        self.create_progress_meter(progress_container)
+
         # Button Frame
         self.buttonFrame = ttk.Frame(self.master)
-        self.buttonFrame.grid(row=1, column=0, padx=2, pady=2, sticky="ew")
+        self.buttonFrame.grid(row=2, column=0, padx=2, pady=2, sticky="ew")
+
+        emoji_font = font.Font(family='Segoe UI Emoji', size=12)
 
         # Control button
-        self.play_pause_button = ttkb.Button(self.buttonFrame, text="---Play---", bootstyle="success", command=self.toggle_play_pause)
+        self.play_pause_button = tk.Button(self.buttonFrame, text="▶️", font=emoji_font, command=self.toggle_play_pause)
+        self.play_pause_button.configure(bg="#006400", fg="#ffffff")
         self.play_pause_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
-        self.teardown = ttkb.Button(self.buttonFrame, text="Teardown", bootstyle="danger", command=self.exitClient)
-        self.teardown.pack(side=LEFT, padx=2, pady=2, expand=True)
-
         # 快进按钮
-        self.fast_forward_button = ttkb.Button(self.buttonFrame, text=">>", bootstyle="info", command=self.fastForwardMovie)
+        self.fast_forward_button = tk.Button(self.buttonFrame, text="⏩", font=emoji_font, command=self.fastForwardMovie)
         self.fast_forward_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # 回退按钮
-        self.rewind_button = ttkb.Button(self.buttonFrame, text="<<", bootstyle="info", command=self.rewindMovie)
+        self.rewind_button = tk.Button(self.buttonFrame, text="⏪", font=emoji_font, command=self.rewindMovie)
         self.rewind_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
         # 重播按钮
-        self.replay_button = ttkb.Button(self.buttonFrame, text="Replay", bootstyle="info", command=self.replayMovie)
+        self.replay_button = tk.Button(self.buttonFrame, text="🔄", font=emoji_font, command=self.replayMovie)
         self.replay_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
-        self.double_speed_button = ttkb.Button(self.buttonFrame, text="2× Speed", bootstyle="info", command=self.toggle_speed)
+        self.double_speed_button = tk.Button(self.buttonFrame, text="2× Speed", font=emoji_font, command=self.toggle_speed)
         self.double_speed_button.pack(side=LEFT, padx=2, pady=2, expand=True)
 
-        # Create Subscribe button
-        self.subscribe = ttkb.Button(self.buttonFrame, text="Subscribe", bootstyle="info", command=self.toggleInfoWindow)
-        self.subscribe.pack(side=LEFT, padx=2, pady=2, expand=True)
-
-        # Create Graph button
-        self.graph_button = ttkb.Button(self.buttonFrame, text="Graph", bootstyle="info", command=self.toggleGraphWindows)
-        self.graph_button.pack(side=LEFT, padx=2, pady=2, expand=True)
-
-        self.fullscreen = ttkb.Button(self.buttonFrame, text="Fullscreen", bootstyle="secondary", command=self.toggleFullscreen)
+        self.fullscreen = tk.Button(self.buttonFrame, text="⏹", font=emoji_font, command=self.toggleFullscreen)
+        self.fullscreen.configure(bg="#808080", fg="#ffffff")
         self.fullscreen.pack(side=LEFT, padx=2, pady=2, expand=True)
 
+        teardown_button = ttkb.Button(self.buttonFrame, text="🛑", bootstyle="danger", command=self.exitClient)
+        teardown_button.pack(side=LEFT, padx=2, pady=2, expand=True)
+        
         # Label for displaying video
         # Create a label to display the movie
         self.label = Label(self.master, height=19)
@@ -133,8 +153,6 @@ class Client(ttkb.Frame):
         self.icon_label = Label(self.master, bg='black')
         self.icon_label.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.icon_label.bind("<Button-1>", self.toggle_play_pause)  # 绑定鼠标左键点击事件
-
-        self.create_progress_meter()
 
     def setupMovie(self):
         """Setup button handler."""
@@ -160,6 +178,11 @@ class Client(ttkb.Frame):
             self.setupMovie()  # 调用设置函数
 
         if self.state == self.READY:
+            try:
+                if (abs(self.seekframe - self.current_frame) > 2):
+                    self.sendRtspRequest(self.SEEK)
+            except:
+                pass
             # Create a new thread to listen for RTP packets
             print("Starting RTP listening thread...")
             threading.Thread(target=self.listenRtp).start()
@@ -171,9 +194,9 @@ class Client(ttkb.Frame):
 
             self.hide_play_icon()
 
-    def create_progress_meter(self):
-        container = ttkb.Frame(self.master)
-        container.grid(row=2, column=0, sticky="ew", padx=10, pady=10)  # 使用 grid 管理几何布局
+    def create_progress_meter(self, container):
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=1)
 
         self.elapse = ttkb.Label(container, text='Time: {}'.format(int(self.elapsed_var.get())))
         self.elapse.grid(row=0, column=0, padx=10, pady=10)
@@ -181,12 +204,13 @@ class Client(ttkb.Frame):
         self.scale = ttkb.Scale(
             master=container,
             command=self.on_progress,
-            bootstyle='secondary'
+            bootstyle='secondary',
+            orient='horizontal'
         )
         self.scale.grid(row=0, column=1, sticky="ew", padx=10, pady=10, columnspan=2)  # Make sure to set columnspan if needed
 
         self.remain = ttkb.Label(container, text='Time: {}'.format(int(self.remain_var.get())))
-        self.remain.grid(row=0, column=3, padx=10, pady=10)
+        self.remain.grid(row=0, column=2, padx=10, pady=10)
 
     def listenRtp(self):
         """Listen for RTP packets."""
@@ -205,12 +229,14 @@ class Client(ttkb.Frame):
 
                     currFrameNbr = rtpPacket.seqNum()
                     print("Current Seq Num: " + str(currFrameNbr))
-
+                    if currFrameNbr > self.frameNbr+30:
+                        self.frameNbr+=60
                     if currFrameNbr > self.frameNbr + 1:
                         self.packet_loss += currFrameNbr - self.frameNbr - 1
 
                     self.frameNbr = currFrameNbr
                     self.scale.set(self.frameNbr / self.total_frames)  # 更新进度条
+                    self.current_frame = currFrameNbr
                     self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
 
                     # Update graph data
@@ -304,7 +330,7 @@ class Client(ttkb.Frame):
             #self.resetPacketStats()  # Reset packet stats before fast forward
             request = f"FAST_FORWARD {self.fileName} RTSP/1.0\nCSeq: {self.rtspSeq}\nSession: {self.sessionId}\nFrames: 50"
             self.requestSent = self.FAST_FORWARD
-            self.frameNbr+=100
+            #self.frameNbr+=60
 
         elif requestCode == self.REWIND:
             #self.resetPacketStats()  # Reset packet stats before rewind
@@ -323,8 +349,13 @@ class Client(ttkb.Frame):
             request = f"DOUBLE_SPEED {self.fileName} RTSP/1.0\nCSeq: {self.rtspSeq}\nSession: {self.sessionId}\nSpeed: {speed}"
             self.requestSent = self.DOUBLE_SPEED
 
+        elif requestCode == self.SEEK:
+            print(self.seekframe - self.current_frame)
+            request = f"SEEK {self.fileName} RTSP/1.0\nCSeq: {self.rtspSeq}\nSession: {self.sessionId}\nFrame: {self.seekframe - self.current_frame}"
+            self.requestSent = self.SEEK
+        
         # Send the RTSP request using rtspSocket
-        if requestCode in [self.SETUP, self.PLAY, self.PAUSE, self.TEARDOWN, self.FAST_FORWARD, self.REWIND, self.REPLAY, self.DOUBLE_SPEED]:
+        if requestCode in [self.SETUP, self.PLAY, self.PAUSE, self.TEARDOWN, self.FAST_FORWARD, self.REWIND, self.REPLAY,self.DOUBLE_SPEED,self.SEEK]:
             self.rtspSocket.send(request.encode())
             print('\nData sent:\n' + request)
 
@@ -501,16 +532,24 @@ class Client(ttkb.Frame):
         # 更新进度条的显示为时间格式
         self.elapse.configure(text=f'Time: {elapsed_minutes:02d}:{elapsed_seconds:02d}')
         self.remain.configure(text=f'Time: {total_minutes:02d}:{total_seconds:02d}')
+        
+        if self.state == self.PLAYING:
+            self.seekframe = self.current_frame
+            return
+        
+        self.seekframe = current_frame
+        self.frameNbr = self.seekframe
+        
 
     def toggle_play_pause(self, event=None):
         if self.state == self.PLAYING:
             self.pauseMovie()
-            self.play_pause_button.config(text="---Play---")
+            self.play_pause_button.config(text="▶️")
             # 显示播放图标
             self.show_play_icon()
         else:
             self.playMovie()
-            self.play_pause_button.config(text="--Pause--")
+            self.play_pause_button.config(text="▶️")
             # 隐藏播放图标
             self.hide_play_icon()
     def toggle_play_pause_key(self, event=None):
@@ -639,3 +678,24 @@ class Client(ttkb.Frame):
         canvas_packet_loss = FigureCanvasTkAgg(fig_packet_loss, master=self.packet_loss_window)
         canvas_packet_loss.get_tk_widget().pack(fill=BOTH, expand=True)
         canvas_packet_loss.draw()
+
+    def resize_image(self, event=None):
+        # 只有在有当前帧图像时才进行调整
+        if self.current_frame_image:
+            # 获取 label 的当前尺寸
+            max_width = self.label.winfo_width()
+            max_height = self.label.winfo_height()
+            
+            # 计算保持原始宽高比的目标大小
+            orig_width, orig_height = self.current_frame_image.size
+            ratio = min(max_width / orig_width, max_height / orig_height)
+            new_width = int(orig_width * ratio)
+            new_height = int(orig_height * ratio)
+            
+            # 调整图像大小以适应 label 的当前尺寸
+            img_resized = self.current_frame_image.resize((new_width, new_height), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img_resized)
+            
+            # 更新 label 的图像
+            self.icon_label.configure(image=photo)
+            self.icon_label.image = photo  # 保持对 photo 的引用，防止被垃圾回收

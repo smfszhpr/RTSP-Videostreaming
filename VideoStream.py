@@ -1,4 +1,5 @@
 from collections import deque
+
 class VideoStream:
 	def __init__(self, filename):
 		self.filename = filename
@@ -34,7 +35,7 @@ class VideoStream:
 				self.frameNum += 1
 			return data
 		except Exception as e:
-			print(f"Error reading frame: {e}")
+			print(f"Error in nextFrame: {e}")
 			return None
 	def frameNbr(self):
 		"""Get frame number."""
@@ -57,7 +58,7 @@ class VideoStream:
 						self.frameNum += 1
 					else:
 						break
-			else:
+			elif n < 0:
 				n = -n
 				framelengths = 0
 				for _ in range(n):
