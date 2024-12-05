@@ -9,7 +9,8 @@ class ServerWorker:
 	PLAY = 'PLAY'
 	PAUSE = 'PAUSE'
 	TEARDOWN = 'TEARDOWN'
-	
+	REPLAY = 'REPLAY'  # 添加重播请求类型
+
 	INIT = 0
 	READY = 1
 	PLAYING = 2
@@ -63,12 +64,14 @@ class ServerWorker:
 					self.state = self.READY
 				except IOError:
 					self.replyRtsp(self.FILE_NOT_FOUND_404, seq[1])
-				
+
+				total_frames_num = self.clientInfo['videoStream'].get_total_frames_num()
 				# Generate a randomized RTSP session ID
 				self.clientInfo['session'] = randint(100000, 999999)
 				
 				# Send RTSP reply
-				self.replyRtsp(self.OK_200, seq[1])
+				self.SendTotalFrame(total_frames_num, seq[1])
+				#self.replyRtsp(self.OK_200, seq[1])
 				
 				# Get the RTP/UDP port from the last line
 				self.clientInfo['rtpPort'] = request[2].split(' ')[3]
@@ -94,7 +97,7 @@ class ServerWorker:
 			if self.state == self.PLAYING:
 				print("processing PAUSE\n")
 				self.state = self.READY
-				
+				#self.clientInfo['videoStream'].movepoint(-100)
 				self.clientInfo['event'].set()
 			
 				self.replyRtsp(self.OK_200, seq[1])
@@ -102,7 +105,6 @@ class ServerWorker:
 		# Process TEARDOWN request
 		elif requestType == self.TEARDOWN:
 			print("processing TEARDOWN\n")
-
 			self.clientInfo['event'].set()
 			
 			self.replyRtsp(self.OK_200, seq[1])
@@ -110,6 +112,44 @@ class ServerWorker:
 			# Close the RTP socket
 			self.clientInfo['rtpSocket'].close()
 			
+		# Handle new command
+		elif requestType == "FAST_FORWARD":
+			frames_to_skip = int(request[3].split(' ')[1])  # Assuming frame count is sent like this
+			if self.state == self.PLAYING:
+				self.clientInfo['videoStream'].movepoint(100)
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+    
+				# Create a new thread and start sending RTP packets
+				
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'].start()
+    
+    	# 处理回退请求
+		elif requestType == "REWIND":
+			frames_to_rewind = int(request[3].split(' ')[1])  # 假设回退的帧数以这种方式发送
+			if self.state == self.PLAYING:
+				self.clientInfo['videoStream'].backpoint(100)
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'].start()
+		elif requestType == self.REPLAY:
+			if self.state in [self.PLAYING, self.READY]:
+				print("processing REPLAY\n")
+				self.state = self.READY
+				self.clientInfo['videoStream'].reset()  # 重置视频流到开头
+				self.clientInfo['event'].set()
+				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+				self.replyRtsp(self.OK_200, seq[1])
+				self.clientInfo['event'] = threading.Event()
+				self.clientInfo['worker'] = threading.Thread(target=self.sendRtp) 
+				self.clientInfo['worker'].start()
+
 	def sendRtp(self):
 		"""Send RTP packets over UDP."""
 		while True:
@@ -162,3 +202,11 @@ class ServerWorker:
 			print("404 NOT FOUND")
 		elif code == self.CON_ERR_500:
 			print("500 CONNECTION ERROR")
+  
+	# 用于发送总的帧数
+	def SendTotalFrame(self, total_frames_num, cseq):
+		reply = 'RTSP/1.0 200 OK\nCSeq: {}\n'.format(cseq) + \
+                'Session: ' + str(self.clientInfo['session']) + '\n' + \
+                'Total: {}'.format(total_frames_num)
+		print(reply)
+		self.clientInfo['rtspSocket'][0].send(reply.encode())
